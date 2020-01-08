@@ -2,7 +2,6 @@ package com.plugin;
 
 import com.plugin.annotation.Id;
 import com.plugin.handler.KeyGeneratorFactory;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.executor.Executor;
 import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.mapping.SqlCommandType;
@@ -20,8 +19,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * 3、无主键注解的时候，全局默认主键名为id
  */
 @Intercepts(@Signature(type = Executor.class, method = "update", args = {MappedStatement.class, Object.class}))
-@SuppressWarnings("all")
+@SuppressWarnings({"rawtypes", "unchecked"})
 public class GenerateKeyInterceptor implements Interceptor {
+
+    private static final String ID_TYPE = "idType";
 
     private final KeyGeneratorFactory handlerFactory;
 
@@ -85,9 +86,7 @@ public class GenerateKeyInterceptor implements Interceptor {
      */
     @Override
     public void setProperties(Properties properties) {
-        if (StringUtils.isNoneBlank(properties.getProperty("idType"))) {
-            this.idType = properties.getProperty("idType");
-        }
+        this.idType = properties.getProperty(ID_TYPE);
     }
 
     /**
@@ -116,7 +115,7 @@ public class GenerateKeyInterceptor implements Interceptor {
     /**
      * 反射获取注解字段
      *
-     * @param object 参数
+     * @param paramObj 参数
      * @param idType 全局配置的策略
      * @throws Throwable
      */
@@ -182,5 +181,4 @@ public class GenerateKeyInterceptor implements Interceptor {
             handlerFactory.doHandler(idType, paramObj, null);
         }
     }
-
 }

@@ -157,16 +157,4 @@ public class SnowflakeIdWorker {
         return System.currentTimeMillis();
     }
 
-
-    public static void main(String[] args) {
-        SnowflakeIdWorker idWorker = new SnowflakeIdWorker(1, 1);
-        ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(10, Integer.MAX_VALUE, 5, TimeUnit.SECONDS, new SynchronousQueue<>());
-        for (int i = 0; i < 10000; i++) {
-            threadPoolExecutor.execute(() -> {
-                long id = idWorker.nextId();
-                System.out.println("id:" + id);
-            });
-        }
-        threadPoolExecutor.shutdown();
-    }
 }

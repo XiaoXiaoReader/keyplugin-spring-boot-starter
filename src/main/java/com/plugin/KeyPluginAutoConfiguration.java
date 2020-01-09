@@ -14,6 +14,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.apache.ibatis.logging.Log;
+import org.apache.ibatis.logging.LogFactory;
 
 import javax.annotation.PostConstruct;
 import java.util.List;
@@ -28,6 +30,7 @@ import java.util.Properties;
 @AutoConfigureAfter({MybatisAutoConfiguration.class})
 @ConditionalOnProperty(prefix = "keyplugin", name = "enabled", havingValue = "true")
 public class KeyPluginAutoConfiguration {
+    private static final Log log = LogFactory.getLog(KeyPluginAutoConfiguration.class);
 
     private static final String ID_TYPE = "idType";
 
@@ -45,7 +48,7 @@ public class KeyPluginAutoConfiguration {
 
     @PostConstruct
     public void addPageInterceptor() {
-        System.err.println(keyPluginProperties.toString());
+        log.debug(keyPluginProperties.toString());
         GenerateKeyInterceptor generateKeyPlugin = new GenerateKeyInterceptor(keyGeneratorFactory);
         Properties properties = new Properties();
         // TODO 全局主键（id）策略

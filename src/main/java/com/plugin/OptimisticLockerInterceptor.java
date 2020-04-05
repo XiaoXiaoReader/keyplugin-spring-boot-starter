@@ -38,7 +38,7 @@ public class OptimisticLockerInterceptor implements Interceptor {
     /**
      * 缓存@Version字段，优化性能
      */
-    private Map<Class, Field> filesMap = new ConcurrentHashMap<>();
+    private Map<Class, FieldInfo> filesMap = new ConcurrentHashMap<>();
 
     @Override
     public Object intercept(Invocation invocation) throws Exception {
@@ -57,12 +57,10 @@ public class OptimisticLockerInterceptor implements Interceptor {
                 return invocation.proceed();
             }
             // 获取对应对象@Version的属性
-            Field field = filesMap.get(paramObj.getClass());
-            //版本号数据库列名
-            String columnFileld = field.getAnnotation(Version.class).value();
+            FieldInfo fieldInfo = filesMap.get(paramObj.getClass());
             String originalSql = boundSql.getSql();
             StringBuilder builderSql = new StringBuilder(originalSql);
-            builderSql.append(" and ").append(columnFileld).append(" = ?");
+            builderSql.append(" and ").append(fieldInfo.getColumn()).append(" = ?");
             //通过反射修改sql语句
             preMetaObject.setValue("boundSql.sql", builderSql.toString());
         }
@@ -71,8 +69,8 @@ public class OptimisticLockerInterceptor implements Interceptor {
             MetaObject parameterHandlerMetaObject = SystemMetaObject.forObject(parameterHandler);
             Object paramObj = parameterHandlerMetaObject.getValue("parameterObject");
             // 由于StatementHandler优先于ParameterHandler执行，直接判断缓存中有没有值即可，没有直接跳过
-            Field field = filesMap.get(paramObj.getClass());
-            if (field == null) {
+            FieldInfo fieldInfo = filesMap.get(paramObj.getClass());
+            if (fieldInfo == null || fieldInfo.getFieldName() == null) {
                 return invocation.proceed();
             }
 
@@ -80,14 +78,14 @@ public class OptimisticLockerInterceptor implements Interceptor {
             Configuration configuration = (Configuration) parameterHandlerMetaObject.getValue("configuration");
             MetaObject paramObjMetaObject = SystemMetaObject.forObject(paramObj);
             //版本号原始值
-            Object originalVersionVal = paramObjMetaObject.getValue(field.getName());
+            Object originalVersionVal = paramObjMetaObject.getValue(fieldInfo.getFieldName());
             if (originalVersionVal == null) {
                 //这里根据实际情况处理
-                throw new NullPointerException(String.format("%s版本号属性%s不能为空", paramObj.getClass().getName(), field.getName()));
+                throw new NullPointerException(String.format("%s版本号属性%s不能为空", paramObj.getClass().getName(), fieldInfo.getFieldName()));
                 //return invocation.proceed();
             }
             //创建新的参数映射
-            ParameterMapping versionMapping = new ParameterMapping.Builder(configuration, field.getName(), Object.class).build();
+            ParameterMapping versionMapping = new ParameterMapping.Builder(configuration, fieldInfo.getFieldName(), Object.class).build();
             //版本号类型
             TypeHandler typeHandler = versionMapping.getTypeHandler();
             JdbcType jdbcType = versionMapping.getJdbcType();
@@ -104,12 +102,12 @@ public class OptimisticLockerInterceptor implements Interceptor {
                 throw new TypeException("版本号参数添加失败", e);
             }
             //版本号+1
-            Object newVersionVal = SqlUtil.getUpdatedVersionVal(field.getType(), originalVersionVal);
-            paramObjMetaObject.setValue(field.getName(), newVersionVal);
+            Object newVersionVal = SqlUtil.getUpdatedVersionVal(fieldInfo.getFieldType(), originalVersionVal);
+            paramObjMetaObject.setValue(fieldInfo.getFieldName(), newVersionVal);
             //输出SQL
             String id = ((MappedStatement) parameterHandlerMetaObject.getValue("mappedStatement")).getId();
             String sql = SqlUtil.getSql(configuration, boundSql, id).replace("?", originalVersionVal.toString());
-            log.debug("乐观锁sql ==>  " + sql);
+            log.debug("乐观锁sql ==> " + sql);
             /*这里的invocation.proceed()返回null，不能作为sql执行成功或失败的标志。
             要想知道乐观锁是否执行成功或者失败可以拦截Executor对象的update方法判断*/
             return invocation.proceed();
@@ -129,6 +127,7 @@ public class OptimisticLockerInterceptor implements Interceptor {
     public void setProperties(Properties properties) {
     }
 
+
     /**
      * 是否支持乐观锁
      * 判断标准：1、不是批量update  2、必须有@Version注解
@@ -141,28 +140,56 @@ public class OptimisticLockerInterceptor implements Interceptor {
             // 不支持批量update
             return false;
         }
+        Class objectClass = object.getClass(); // 实体类型
+        FieldInfo fieldInfo = filesMap.get(objectClass);
+        if (fieldInfo != null) {
+            return fieldInfo.getFieldName() != null;
+        }
+        List<Field> fieldList = SqlUtil.getAllField(object);
+        if (fieldList.size() > 0) {
+            for (Field field : fieldList) {
+                if (field.isAnnotationPresent(Version.class)) { // 是否包含注解
+                    String column = field.getAnnotation(Version.class).value();
+                    fieldInfo = new FieldInfo(field.getName(), field.getType(), column);
+                    filesMap.put(objectClass, fieldInfo);
+                    return true;
+                }
+            }
+        }
+        filesMap.put(objectClass, new FieldInfo());
+        return false;
+    }
+
+   /* private boolean getParam(Object object) {
+        if (object instanceof Map) {
+            // 不支持批量update
+            return false;
+        }
         Class objectClass = object.getClass();
-        Field fieldVersion = filesMap.get(objectClass);
-        if (fieldVersion != null) {
-            return true;
+        FieldInfo fieldInfo = filesMap.get(objectClass);
+        if (fieldInfo != null) {
+            return fieldInfo.getFieldName() != null;
         }
         synchronized (this) {
-            fieldVersion = filesMap.get(objectClass);
-            if (fieldVersion != null) {
-                return true;
+            fieldInfo = filesMap.get(objectClass);
+            if (fieldInfo != null) {
+                return fieldInfo.getFieldName() != null;
             }
             List<Field> fieldList = SqlUtil.getAllField(object);
             if (fieldList.size() > 0) {
                 for (Field field : fieldList) {
                     //是否包含注解
                     if (field.isAnnotationPresent(Version.class)) {
-                        filesMap.put(objectClass, field);
+                        String column = field.getAnnotation(Version.class).value();
+                        fieldInfo = new FieldInfo(field.getName(), field.getType(), column);
+                        filesMap.put(objectClass, fieldInfo);
                         return true;
                     }
                 }
             }
         }
+        filesMap.put(objectClass, new FieldInfo());
         return false;
-    }
+    }*/
 
 }

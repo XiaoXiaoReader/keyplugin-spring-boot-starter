@@ -48,6 +48,7 @@ public class KeyPluginAutoConfiguration {
 
     @PostConstruct
     public void addPageInterceptor() {
+        log.debug("Init keyPlugin");
         log.debug(keyPluginProperties.toString());
         GenerateKeyInterceptor generateKeyPlugin = new GenerateKeyInterceptor(keyGeneratorFactory);
         Properties properties = new Properties();
